@@ -1,0 +1,2446 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PvZ2 斗蛐蛐植物雷达图</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    height: 100%;
+    font-family: 'Microsoft YaHei', 'PingFang SC', sans-serif;
+    background: #060a14;
+    color: #e0e6f0;
+    overflow-x: hidden;
+  }
+  body {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+  }
+
+  /* ========== 动态星空背景 ========== */
+  #bgCanvas {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    z-index: 0;
+    pointer-events: none;
+  }
+  .bg-glow {
+    position: fixed;
+    border-radius: 50%;
+    filter: blur(120px);
+    opacity: 0.18;
+    z-index: 0;
+    pointer-events: none;
+    animation: bgGlowMove 12s ease-in-out infinite alternate;
+  }
+  .bg-glow-1 { width: 600px; height: 600px; background: #1e3a8a; top: -10%; left: -10%; animation-delay: 0s; }
+  .bg-glow-2 { width: 500px; height: 500px; background: #6d28d9; bottom: -10%; right: -10%; animation-delay: -4s; }
+  .bg-glow-3 { width: 400px; height: 400px; background: #0ea5e9; top: 40%; left: 50%; animation-delay: -8s; }
+  @keyframes bgGlowMove {
+    0% { transform: translate(0, 0) scale(1); }
+    50% { transform: translate(40px, -30px) scale(1.15); }
+    100% { transform: translate(-20px, 20px) scale(0.95); }
+  }
+
+  /* ========== 顶部导航 ========== */
+  .header {
+    background: linear-gradient(135deg, rgba(15,22,40,0.9) 0%, rgba(26,31,58,0.9) 100%);
+    border-bottom: 1px solid rgba(100, 180, 255, 0.12);
+    padding: 14px 40px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky; top: 0; z-index: 100;
+    backdrop-filter: blur(20px);
+    box-shadow: 0 2px 20px rgba(0,0,0,0.3);
+  }
+  .header h1 {
+    font-size: 22px;
+    background: linear-gradient(90deg, #64b5f6, #ce93d8);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    letter-spacing: 2px;
+  }
+  .nav-tabs {
+    display: flex; gap: 4px;
+    background: rgba(255,255,255,0.05);
+    border-radius: 10px; padding: 4px;
+  }
+  .nav-tab {
+    padding: 8px 24px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    color: #8899bb;
+    transition: all 0.3s;
+    border: none; background: none;
+  }
+  .nav-tab:hover { color: #c0d0f0; }
+  .nav-tab.active {
+    background: linear-gradient(135deg, #1e3a5f, #2a1f4e);
+    color: #fff;
+    box-shadow: 0 2px 12px rgba(100, 150, 255, 0.2);
+  }
+
+  /* ========== 页面容器 ========== */
+  .page { display: none !important; padding: 20px 40px; position: relative; z-index: 1; }
+  .page.active { display: block !important; }
+
+  .radar-page {
+    gap: 24px; flex-wrap: wrap;
+    flex: 1;
+    min-height: calc(100vh - 64px);
+    align-content: stretch;
+  }
+  .radar-page.active { display: flex !important; }
+
+  .input-page { max-width: 100%; padding: 24px 32px; flex: 1; }
+  .input-page.active { display: block !important; }
+
+  .radar-container {
+    flex: 1; min-width: 520px;
+    background: transparent;
+    border: none;
+    padding: 24px 30px;
+    position: relative;
+    overflow: visible;
+    display: flex;
+    flex-direction: column;
+  }
+  .radar-container::before {
+    display: none;
+  }
+  .radar-title {
+    text-align: center;
+    font-size: 18px;
+    font-weight: bold;
+    margin-bottom: 10px;
+    color: #b0c4e8;
+    letter-spacing: 1px;
+  }
+  .radar-subtitle {
+    text-align: center;
+    font-size: 13px;
+    color: #5a6a8a;
+    margin-bottom: 20px;
+  }
+
+  /* 雷达主体：居中聚拢布局 */
+  .radar-body {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 40px;
+    width: 100%;
+    max-width: 950px;
+    margin: 0 auto;
+    flex: 1;
+    min-height: 0;
+  }
+  .radar-left {
+    width: 460px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-width: 0;
+    overflow: visible;
+  }
+  .radar-right {
+    width: 380px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 0;
+    position: relative;
+  }
+  .plant-display {
+    width: 100%;
+    max-width: 350px;
+    aspect-ratio: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+  }
+  .plant-display img {
+    width: 90%;
+    height: 90%;
+    object-fit: contain;
+    filter: drop-shadow(0 0 30px rgba(100, 150, 255, 0.15));
+    transition: all 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  .plant-display img:hover {
+    filter: drop-shadow(0 0 50px rgba(100, 180, 255, 0.4));
+    transform: scale(1.08);
+  }
+  .plant-display-name {
+    margin-top: 12px;
+    font-size: 20px;
+    font-weight: bold;
+    letter-spacing: 2px;
+    text-shadow: 0 0 20px rgba(100, 150, 255, 0.3);
+  }
+  .plant-display-empty {
+    color: #3a4a6a;
+    font-size: 15px;
+    text-align: center;
+    line-height: 2;
+  }
+  @keyframes plantFadeIn {
+    from { opacity: 0; transform: scale(0.85); }
+    to { opacity: 1; transform: scale(1); }
+  }
+  .plant-display-animate {
+    animation: plantFadeIn 2s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  }
+
+  /* SVG 雷达图 */
+  .radar-svg-wrap {
+    display: flex; justify-content: center; align-items: center;
+    position: relative;
+    width: 100%;
+  }
+  .radar-svg {
+    width: 100%;
+    max-width: 500px;
+    height: auto;
+    overflow: visible;
+    filter: drop-shadow(0 0 20px rgba(100, 150, 255, 0.08));
+  }
+
+  /* 图例 */
+  .legend {
+    display: flex; flex-wrap: wrap; gap: 12px;
+    justify-content: center;
+    margin-top: 20px;
+  }
+  .legend-item {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 13px; color: #8899bb;
+    cursor: pointer;
+    padding: 4px 10px;
+    border-radius: 6px;
+    transition: all 0.3s;
+  }
+  .legend-item:hover { background: rgba(255,255,255,0.05); }
+  .legend-item.dimmed { opacity: 0.3; }
+  .legend-dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    border: 2px solid;
+  }
+
+  /* 浮动能力详情卡片 */
+  .score-card-float {
+    position: fixed;
+    top: 80px; right: 24px;
+    z-index: 150;
+    width: 320px;
+    transition: width 0.3s ease;
+  }
+  .score-card-float.collapsed {
+    width: 180px;
+  }
+  .score-card-float-card {
+    background: rgba(13,18,32,0.92);
+    border-radius: 14px;
+    border: 1px solid rgba(100, 180, 255, 0.12);
+    backdrop-filter: blur(16px);
+    box-shadow: 0 4px 30px rgba(0,0,0,0.4);
+    overflow: hidden;
+    transition: all 0.3s ease;
+  }
+  .score-card-float-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 14px;
+    cursor: pointer;
+    user-select: none;
+    border-bottom: 1px solid rgba(100,180,255,0.06);
+  }
+  .score-card-float-header h3 {
+    font-size: 13px; color: #8eaadc; margin: 0;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .score-card-float-toggle {
+    font-size: 12px; color: #5a7a9a;
+    transition: transform 0.3s;
+  }
+  .score-card-float.collapsed .score-card-float-toggle {
+    transform: rotate(180deg);
+  }
+  .score-card-float-body {
+    max-height: 60vh;
+    overflow-y: auto;
+    padding: 16px;
+    transition: max-height 0.4s ease, padding 0.3s ease, opacity 0.3s ease;
+  }
+  .score-card-float.collapsed .score-card-float-body {
+    max-height: 0;
+    padding: 0 16px;
+    opacity: 0;
+    overflow: hidden;
+  }
+  .score-card-float-body::-webkit-scrollbar { width: 4px; }
+  .score-card-float-body::-webkit-scrollbar-thumb { background: rgba(100,180,255,0.2); border-radius: 2px; }
+  .score-card-float-body::-webkit-scrollbar-track { background: transparent; }
+  .score-card-float-dragging {
+    transition: none !important;
+    user-select: none;
+  }
+
+  /* 浮动选择器卡片 */
+  .selector-float {
+    position: fixed;
+    bottom: 20px; right: 24px;
+    z-index: 150;
+    width: 320px;
+    transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  .selector-float.collapsed {
+    width: 200px;
+  }
+  .selector-float-card {
+    background: rgba(13,18,32,0.92);
+    border-radius: 14px;
+    border: 1px solid rgba(100, 180, 255, 0.12);
+    backdrop-filter: blur(16px);
+    box-shadow: 0 4px 30px rgba(0,0,0,0.4);
+    overflow: hidden;
+    transition: all 0.4s ease;
+  }
+  .selector-float-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 14px;
+    cursor: pointer;
+    user-select: none;
+    border-bottom: 1px solid rgba(100,180,255,0.06);
+  }
+  .selector-float-header h3 {
+    font-size: 13px; color: #8eaadc; margin: 0;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .selector-float-toggle {
+    font-size: 12px; color: #5a7a9a;
+    transition: transform 0.3s;
+  }
+  .selector-float.collapsed .selector-float-toggle {
+    transform: rotate(180deg);
+  }
+  .selector-float-body {
+    max-height: 320px;
+    overflow-y: auto;
+    padding: 12px;
+    transition: max-height 0.4s ease, padding 0.3s ease, opacity 0.3s ease;
+  }
+  .selector-float.collapsed .selector-float-body {
+    max-height: 0;
+    padding: 0 12px;
+    opacity: 0;
+    overflow: hidden;
+  }
+  .selector-float-body::-webkit-scrollbar { width: 4px; }
+  .selector-float-body::-webkit-scrollbar-thumb { background: rgba(100,180,255,0.2); border-radius: 2px; }
+  .selector-float-body::-webkit-scrollbar-track { background: transparent; }
+  .selector-float-summary {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 12px; color: #7a9abb;
+  }
+  .selector-float.collapsed .selector-float-summary { display: flex; }
+  .selector-float:not(.collapsed) .selector-float-summary { display: none; }
+  .panel-card {
+    background: rgba(13,18,32,0.5);
+    border-radius: 14px;
+    border: 1px solid rgba(100, 180, 255, 0.08);
+    padding: 20px;
+    backdrop-filter: blur(8px);
+  }
+  .panel-card h3 {
+    font-size: 15px;
+    color: #8eaadc;
+    margin-bottom: 14px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid rgba(100, 180, 255, 0.1);
+  }
+  .score-row {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 8px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.03);
+    font-size: 13px;
+  }
+  .score-row:last-child { border-bottom: none; }
+  .score-label { color: #7a8aaa; }
+  .score-value {
+    font-weight: bold;
+    font-size: 16px;
+    min-width: 36px;
+    text-align: right;
+  }
+  .score-bar-bg {
+    flex: 1; height: 4px;
+    background: rgba(255,255,255,0.06);
+    border-radius: 2px;
+    margin: 0 12px;
+    overflow: hidden;
+  }
+  .score-bar-fill {
+    height: 100%;
+    border-radius: 2px;
+    transition: width 1s ease;
+  }
+  /* 超限 200+ 破碎感 */
+  .score-bar-fill.overdrive {
+    width: 100% !important;
+    background: linear-gradient(90deg, #ff69b4, #9370db, #4169e1, #00bfff, #4169e1, #9370db) !important;
+    background-size: 200% 100% !important;
+    animation: overdriveShimmer 2s linear infinite !important;
+    position: relative;
+    border-radius: 2px;
+    box-shadow: 0 0 8px rgba(255,105,180,0.55), 0 0 18px rgba(147,112,219,0.4), 0 0 30px rgba(0,191,255,0.25);
+  }
+  .score-bar-fill.overdrive::after {
+    content: '';
+    position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+    background: repeating-linear-gradient(
+      -45deg, transparent, transparent 4px,
+      rgba(255,255,255,0.1) 4px, rgba(255,255,255,0.1) 6px,
+      transparent 6px, transparent 10px,
+      rgba(0,0,0,0.15) 10px, rgba(0,0,0,0.15) 11px
+    );
+    pointer-events: none;
+  }
+  @keyframes overdriveShimmer {
+    0% { background-position: 0% 50%; }
+    100% { background-position: 200% 50%; }
+  }
+  .total-score {
+    text-align: center;
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid rgba(100, 180, 255, 0.15);
+  }
+  .total-score .num {
+    font-size: 36px;
+    font-weight: bold;
+    background: linear-gradient(90deg, #64b5f6, #ce93d8);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .total-score .label { font-size: 12px; color: #5a6a8a; }
+
+  /* 评级徽章 */
+  .rating-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 5px 12px;
+    border-radius: 8px;
+    font-size: 22px;
+    font-weight: 900;
+    letter-spacing: 2px;
+    margin-top: 8px;
+    min-width: 60px;
+    text-align: center;
+    border: 1.5px solid currentColor;
+    position: relative;
+    transition: all 0.3s ease;
+  }
+  /* D级 */
+  .rating-badge.rank-d-minus { color: #90a4ae; background: rgba(144,164,174,0.06); border-color: rgba(144,164,174,0.2); }
+  .rating-badge.rank-d { color: #78909c; background: rgba(120,144,156,0.1); border-color: rgba(120,144,156,0.3); }
+  .rating-badge.rank-d-plus { color: #607d8b; background: rgba(96,125,139,0.14); border-color: rgba(96,125,139,0.4); }
+  /* C级 */
+  .rating-badge.rank-c-minus { color: #81c784; background: rgba(129,199,132,0.06); border-color: rgba(129,199,132,0.2); }
+  .rating-badge.rank-c { color: #66bb6a; background: rgba(102,187,106,0.1); border-color: rgba(102,187,106,0.3); }
+  .rating-badge.rank-c-plus { color: #4caf50; background: rgba(76,175,80,0.14); border-color: rgba(76,175,80,0.4); }
+  /* B级 */
+  .rating-badge.rank-b-minus { color: #64b5f6; background: rgba(100,181,246,0.07); border-color: rgba(100,181,246,0.22); }
+  .rating-badge.rank-b { color: #42a5f5; background: rgba(66,165,245,0.1); border-color: rgba(66,165,245,0.3); }
+  .rating-badge.rank-b-plus { color: #2196f3; background: rgba(33,150,243,0.14); border-color: rgba(33,150,243,0.4); box-shadow: 0 0 10px rgba(33,150,243,0.15); }
+  /* A级 */
+  .rating-badge.rank-a-minus { color: rgb(245,32,248); background: rgba(245,32,248,0.08); border-color: rgba(245,32,248,0.35); text-shadow: 0 0 10px rgba(245,32,248,0.4); box-shadow: 0 0 14px rgba(245,32,248,0.15); }
+  .rating-badge.rank-a { color: rgb(245,32,248); background: rgba(245,32,248,0.15); border-color: rgba(245,32,248,0.55); text-shadow: 0 0 16px rgba(245,32,248,0.7); box-shadow: 0 0 22px rgba(245,32,248,0.3); }
+  .rating-badge.rank-a-plus { color: rgb(245,32,248); background: rgba(245,32,248,0.22); border-color: rgba(245,32,248,0.7); text-shadow: 0 0 22px rgba(245,32,248,0.9); box-shadow: 0 0 32px rgba(245,32,248,0.45); }
+  /* S级 - 黄金系，全面超越A+ */
+  .rating-badge.rank-s-minus { color: #ffd969; background: rgba(255,224,130,0.16); border-color: rgba(255,224,130,0.6); text-shadow: 0 0 24px rgba(255,224,130,0.9); box-shadow: 0 0 22px rgba(255,224,130,0.35), 0 0 48px rgba(255,200,50,0.18); }
+  .rating-badge.rank-s { color: #ffd54f; background: rgba(255,213,79,0.24); border-color: rgba(255,213,79,0.75); text-shadow: 0 0 30px rgba(255,213,79,1); box-shadow: 0 0 30px rgba(255,213,79,0.5), 0 0 60px rgba(255,200,50,0.28); }
+  .rating-badge.rank-s-plus { color: #ffee00; background: rgba(255,238,0,0.3); border-color: rgba(255,238,0,0.9); text-shadow: 0 0 36px rgba(255,238,0,1); box-shadow: 0 0 40px rgba(255,238,0,0.65), 0 0 80px rgba(255,200,50,0.38); }
+  /* SS级 - 烈焰红系，全面超越S级 */
+  .rating-badge.rank-ss-minus { color: #d40d0d; background: rgba(215,28,28,0.34); border-color: rgba(210,25,25,0.82); text-shadow: 0 0 44px rgba(215,28,28,1); box-shadow: 0 0 52px rgba(215,28,28,0.78), 0 0 108px rgba(195,18,18,0.48); animation: ssMinusPulse 2.8s ease-in-out infinite; }
+  .rating-badge.rank-ss { color: rgb(254,32,32); background: rgba(254,32,32,0.38); border-color: rgba(254,32,32,0.85); text-shadow: 0 0 46px rgba(254,32,32,1); box-shadow: 0 0 60px rgba(254,32,32,0.78), 0 0 115px rgba(254,32,32,0.42); animation: ssMidPulse 2.2s ease-in-out infinite; }
+  .rating-badge.rank-ss-plus { color: rgb(254,32,32); background: rgba(254,32,32,0.44); border-color: rgba(254,32,32,0.95); text-shadow: 0 0 54px rgba(254,32,32,1); box-shadow: 0 0 72px rgba(254,32,32,0.9), 0 0 140px rgba(254,32,32,0.5); animation: ssPlusPulse 1.8s ease-in-out infinite; }
+  /* SSS级 */
+  .rating-badge.rank-sss-minus {
+    border: 2.5px solid transparent;
+    background:
+      linear-gradient(rgba(60,20,100,0.65), rgba(60,20,100,0.65)) padding-box,
+      linear-gradient(135deg, #8850a8, #7248a0, #5a5098, #5058b0, #4860b0, #4070a8) border-box;
+    background-size: 100% 100%, 300% 300%;
+    background-origin: padding-box, border-box;
+    background-clip: padding-box, border-box;
+    animation: sssPlusBgShimmer 5s ease-in-out infinite, sssMinusGlow 2.8s ease-in-out infinite;
+    color: transparent; overflow: hidden;
+    box-shadow: 0 0 10px rgba(130,90,215,0.9), 0 0 22px rgba(112,85,218,0.66), 0 0 44px rgba(88,108,220,0.46), 0 0 75px rgba(58,128,212,0.28), 0 0 115px rgba(22,158,210,0.14);
+  }
+  .rating-badge.rank-sss-minus::before {
+    content: attr(data-text); position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+    background: linear-gradient(135deg, #c8a8d8, #a888c8, #8868b8, #5858b8, #3858b0, #3068a8);
+    background-size: 300% 300%;
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    animation: goldShimmer 3.5s ease-in-out infinite; z-index: 2;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 900; letter-spacing: 2px;
+    filter: drop-shadow(0 0 8px rgba(130,90,215,0.8)) drop-shadow(0 0 18px rgba(88,108,220,0.45)) drop-shadow(0 0 32px rgba(22,158,210,0.18));
+  }
+  .rating-badge.rank-sss {
+    border: 2.5px solid transparent;
+    background:
+      linear-gradient(rgba(55,18,95,0.72), rgba(55,18,95,0.72)) padding-box,
+      linear-gradient(135deg, #a068b0, #8c58a8, #7a52b8, #6058c8, #4860c8, #3860c0) border-box;
+    background-size: 100% 100%, 300% 300%;
+    background-origin: padding-box, border-box;
+    background-clip: padding-box, border-box;
+    animation: sssPlusBgShimmer 4.5s ease-in-out infinite, sssMidGlow 2.4s ease-in-out infinite;
+    color: transparent; overflow: hidden;
+    box-shadow: 0 0 11px rgba(130,90,215,0.94), 0 0 26px rgba(115,82,220,0.72), 0 0 50px rgba(95,108,220,0.52), 0 0 82px rgba(70,125,215,0.34), 0 0 125px rgba(42,145,210,0.2), 0 0 175px rgba(18,165,210,0.09);
+  }
+  .rating-badge.rank-sss::before {
+    content: attr(data-text); position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+    background: linear-gradient(135deg, #d4b8e0, #b898d0, #9870c0, #6860c8, #4058c0, #3068c0);
+    background-size: 300% 300%;
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    animation: goldShimmer 3.2s ease-in-out infinite; z-index: 2;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 900; letter-spacing: 2px;
+    filter: drop-shadow(0 0 9px rgba(130,90,215,0.85)) drop-shadow(0 0 20px rgba(95,108,220,0.5)) drop-shadow(0 0 38px rgba(42,145,210,0.25)) drop-shadow(0 0 55px rgba(18,165,210,0.12));
+  }
+  .rating-badge.rank-sss-plus {
+    border: 2.5px solid transparent;
+    background:
+      linear-gradient(rgba(50,15,90,0.78), rgba(50,15,90,0.78)) padding-box,
+      linear-gradient(135deg, #ff69b4, #ff1493, #da70d6, #9370db, #7b68ee, #6495ed, #4169e1, #00bfff, #00ffff, #00bfff, #4169e1, #6495ed, #7b68ee, #9370db, #da70d6, #ff1493) border-box;
+    background-size: 100% 100%, 300% 300%;
+    background-origin: padding-box, border-box;
+    background-clip: padding-box, border-box;
+    animation: sssPlusBgShimmer 4s ease-in-out infinite, sssPlusGlow 2s ease-in-out infinite;
+    color: transparent; overflow: hidden;
+    box-shadow: 0 0 12px rgba(147,112,219,0.95), 0 0 32px rgba(123,104,238,0.72), 0 0 65px rgba(100,149,237,0.5), 0 0 120px rgba(65,105,225,0.3), 0 0 200px rgba(0,191,255,0.14);
+  }
+  .rating-badge.rank-sss-plus::before {
+    content: attr(data-text); position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+    background: linear-gradient(135deg, #ff69b4, #ff1493, #da70d6, #9370db, #7b68ee, #6495ed, #4169e1, #00bfff, #00ffff, #00bfff, #4169e1, #6495ed, #7b68ee, #9370db, #da70d6, #ff1493);
+    background-size: 300% 300%;
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    animation: goldShimmer 3s ease-in-out infinite; z-index: 2;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 900; letter-spacing: 2px;
+    filter: drop-shadow(0 0 10px rgba(147,112,219,0.88)) drop-shadow(0 0 24px rgba(100,149,237,0.55)) drop-shadow(0 0 45px rgba(0,191,255,0.25));
+  }
+  @keyframes ssMinusPulse {
+    0%, 100% { box-shadow: 0 0 52px rgba(215,28,28,0.78), 0 0 108px rgba(195,18,18,0.48); }
+    50% { box-shadow: 0 0 78px rgba(215,28,28,0.96), 0 0 155px rgba(195,18,18,0.64); }
+  }
+  @keyframes ssMidPulse {
+    0%, 100% { box-shadow: 0 0 60px rgba(254,32,32,0.78), 0 0 115px rgba(254,32,32,0.42); }
+    50% { box-shadow: 0 0 90px rgba(254,32,32,1), 0 0 165px rgba(254,32,32,0.6); }
+  }
+  @keyframes ssPlusPulse {
+    0%, 100% { box-shadow: 0 0 72px rgba(254,32,32,0.9), 0 0 140px rgba(254,32,32,0.5); }
+    50% { box-shadow: 0 0 115px rgba(254,32,32,1), 0 0 210px rgba(254,32,32,0.7); }
+  }
+  @keyframes goldShimmer {
+    0%, 100% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+  }
+  @keyframes sssPlusBgShimmer {
+    0%, 100% { background-position: 0% 50%, 0% 50%; }
+    50% { background-position: 0% 50%, 100% 50%; }
+  }
+  @keyframes sssMinusGlow {
+    0%, 100% { box-shadow: 0 0 10px rgba(130,90,215,0.9), 0 0 22px rgba(112,85,218,0.66), 0 0 44px rgba(88,108,220,0.46), 0 0 75px rgba(58,128,212,0.28), 0 0 115px rgba(22,158,210,0.14); }
+    50% { box-shadow: 0 0 16px rgba(130,90,215,1), 0 0 36px rgba(112,85,218,0.82), 0 0 68px rgba(88,108,220,0.6), 0 0 110px rgba(58,128,212,0.42), 0 0 165px rgba(22,158,210,0.25); }
+  }
+  @keyframes sssMidGlow {
+    0%, 100% { box-shadow: 0 0 11px rgba(130,90,215,0.94), 0 0 26px rgba(115,82,220,0.72), 0 0 50px rgba(95,108,220,0.52), 0 0 82px rgba(70,125,215,0.34), 0 0 125px rgba(42,145,210,0.2), 0 0 175px rgba(18,165,210,0.09); }
+    50% { box-shadow: 0 0 18px rgba(130,90,215,1), 0 0 42px rgba(115,82,220,0.88), 0 0 76px rgba(95,108,220,0.66), 0 0 120px rgba(70,125,215,0.5), 0 0 180px rgba(42,145,210,0.33), 0 0 245px rgba(18,165,210,0.18); }
+  }
+  @keyframes sssPlusGlow {
+    0%, 100% { box-shadow: 0 0 12px rgba(147,112,219,0.95), 0 0 32px rgba(123,104,238,0.72), 0 0 65px rgba(100,149,237,0.5), 0 0 120px rgba(65,105,225,0.3), 0 0 200px rgba(0,191,255,0.14); }
+    50% { box-shadow: 0 0 22px rgba(147,112,219,1), 0 0 54px rgba(123,104,238,0.9), 0 0 100px rgba(100,149,237,0.65), 0 0 180px rgba(65,105,225,0.44), 0 0 290px rgba(0,191,255,0.24); }
+  }
+  .total-score-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+  }
+  .total-score-col {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  /* 植物图片 */
+  .plant-img {
+    width: 80px; height: 80px;
+    border-radius: 10px;
+    object-fit: contain;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(100,180,255,0.1);
+    flex-shrink: 0;
+  }
+  .plant-img-sm {
+    width: 48px; height: 48px;
+    border-radius: 6px;
+    object-fit: contain;
+    flex-shrink: 0;
+  }
+  .plant-img-lg {
+    width: 96px; height: 96px;
+    border-radius: 12px;
+    object-fit: contain;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(100,180,255,0.1);
+    flex-shrink: 0;
+  }
+  .plant-chip {
+    display: flex; align-items: center; gap: 6px;
+  }
+  .plant-img-upload {
+    width: 48px; height: 48px;
+    border-radius: 10px;
+    border: 2px dashed rgba(100,180,255,0.25);
+    background: rgba(0,0,0,0.3);
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px; color: #5a6a8a;
+    overflow: hidden;
+    position: relative;
+    flex-shrink: 0;
+    transition: border-color 0.3s;
+  }
+  .plant-img-upload:hover { border-color: #64b5f6; }
+  .plant-img-upload img {
+    width: 100%; height: 100%;
+    object-fit: contain;
+  }
+  .plant-img-upload input[type="file"] {
+    position: absolute; width: 100%; height: 100%;
+    opacity: 0; cursor: pointer;
+  }
+  .score-plant-header {
+    display: flex; align-items: center; gap: 10px;
+    margin-bottom: 12px;
+  }
+  .score-plant-name {
+    font-size: 15px; font-weight: bold; color: #b0c4e8;
+  }
+
+  /* 植物选择器 */
+  .plant-selector {
+    display: flex; flex-wrap: wrap; gap: 8px;
+  }
+  .plant-chip {
+    padding: 6px 14px;
+    border-radius: 20px;
+    font-size: 13px;
+    cursor: pointer;
+    border: 1px solid rgba(100, 180, 255, 0.2);
+    background: rgba(255,255,255,0.03);
+    color: #8899bb;
+    transition: all 0.3s;
+  }
+  .plant-chip:hover { border-color: rgba(100, 180, 255, 0.5); }
+  .plant-chip.selected {
+    border-color: #64b5f6;
+    background: rgba(100, 180, 255, 0.12);
+    color: #fff;
+  }
+
+  /* ========== 数据输入页面 ========== */
+
+  .input-section {
+    background: linear-gradient(145deg, #111827, #0d1220);
+    border-radius: 14px;
+    border: 1px solid rgba(100, 180, 255, 0.1);
+    padding: 24px;
+    margin-bottom: 20px;
+  }
+  .input-section h3 {
+    font-size: 16px; color: #8eaadc;
+    margin-bottom: 16px;
+  }
+  .input-section.plant-section {
+    background: transparent;
+    border: none;
+    padding: 0;
+    margin-bottom: 0;
+  }
+  .input-section.plant-section h3 {
+    background: linear-gradient(145deg, #111827, #0d1220);
+    border-radius: 14px 14px 0 0;
+    border: 1px solid rgba(100, 180, 255, 0.1);
+    border-bottom: none;
+    padding: 20px 24px 16px;
+    margin-bottom: 0;
+  }
+
+  .attr-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+  .attr-input-group { display: flex; flex-direction: column; gap: 4px; }
+  .attr-input-group label {
+    font-size: 12px; color: #6a7a9a;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .attr-input-group input, .attr-input-group select {
+    padding: 8px 12px;
+    border-radius: 8px;
+    border: 1px solid rgba(100, 180, 255, 0.15);
+    background: rgba(0,0,0,0.3);
+    color: #e0e6f0;
+    font-size: 14px;
+    outline: none;
+    transition: border-color 0.3s;
+  }
+  .attr-input-group input:focus, .attr-input-group select:focus {
+    border-color: #64b5f6;
+  }
+
+  .plant-data-card {
+    background: rgba(255,255,255,0.02);
+    border: 1px solid rgba(100, 180, 255, 0.08);
+    border-radius: 10px;
+    padding: 16px;
+    transition: transform 0.3s cubic-bezier(0.25,0.8,0.25,1), box-shadow 0.25s ease, opacity 0.25s ease, border-color 0.25s ease;
+    position: relative;
+  }
+  .plant-data-card.dragging {
+    opacity: 0.35;
+    transform: scale(0.96);
+    box-shadow: 0 0 20px rgba(100,180,255,0.3);
+    transition: opacity 0.2s ease, box-shadow 0.2s ease;
+  }
+  .plant-data-card.drag-over {
+    border-color: #64b5f6 !important;
+    box-shadow: 0 0 28px rgba(100,180,255,0.5), inset 0 0 0 1px rgba(100,180,255,0.35);
+  }
+  .plant-data-card.drag-shift-down {
+    transform: translateY(14px) scale(0.98);
+    opacity: 0.7;
+    border-color: rgba(100,180,255,0.2);
+  }
+  .plant-data-card.drag-shift-up {
+    transform: translateY(-14px) scale(0.98);
+    opacity: 0.7;
+    border-color: rgba(100,180,255,0.2);
+  }
+  /* 拖拽占位符（空位提示） */
+  .drag-placeholder {
+    border: 2px dashed rgba(100,180,255,0.55);
+    border-radius: 12px;
+    background: linear-gradient(135deg, rgba(100,180,255,0.10), rgba(147,112,219,0.08));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: rgba(140,200,255,0.85);
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    box-shadow: inset 0 0 24px rgba(100,180,255,0.12), 0 0 18px rgba(100,180,255,0.18);
+    animation: placeholderPulse 1.4s ease-in-out infinite;
+    pointer-events: none;
+  }
+  .drag-placeholder::before {
+    content: '⤓ 放在这里 ⤒';
+    text-shadow: 0 0 8px rgba(100,180,255,0.5);
+  }
+  @keyframes placeholderPulse {
+    0%, 100% { background: linear-gradient(135deg, rgba(100,180,255,0.10), rgba(147,112,219,0.08)); box-shadow: inset 0 0 24px rgba(100,180,255,0.12), 0 0 18px rgba(100,180,255,0.18); }
+    50% { background: linear-gradient(135deg, rgba(100,180,255,0.20), rgba(147,112,219,0.16)); box-shadow: inset 0 0 32px rgba(100,180,255,0.22), 0 0 28px rgba(100,180,255,0.32); }
+  }
+  .drag-handle {
+    cursor: grab;
+    color: rgba(255,255,255,0.25);
+    font-size: 18px;
+    user-select: none;
+    padding: 2px 6px;
+    border-radius: 4px;
+    transition: all 0.2s;
+    letter-spacing: -2px;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+  }
+  .drag-handle:hover { color: rgba(255,255,255,0.6); background: rgba(255,255,255,0.05); }
+  .drag-handle:active { cursor: grabbing; }
+  .plant-data-btn-bar {
+    position: sticky;
+    bottom: 0;
+    z-index: 10;
+    background: linear-gradient(to top, #0f1629 0%, #0f1629 60%, rgba(15,22,41,0) 100%);
+    padding: 18px 24px 14px;
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  .plant-cards-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
+    gap: 16px;
+    margin-bottom: 20px;
+  }
+  .plant-section-body {
+    background: linear-gradient(145deg, #111827, #0d1220);
+    border: 1px solid rgba(100, 180, 255, 0.1);
+    border-top: none;
+    border-radius: 0 0 14px 14px;
+    padding: 20px 24px 80px;
+  }
+  .plant-cards-grid .attr-grid {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+  .plant-data-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 12px;
+  }
+  .plant-name-input {
+    padding: 6px 12px;
+    border-radius: 8px;
+    border: 1px solid rgba(100, 180, 255, 0.2);
+    background: rgba(0,0,0,0.3);
+    color: #fff;
+    font-size: 15px;
+    font-weight: bold;
+    outline: none;
+    width: 160px;
+  }
+  .plant-name-input:focus { border-color: #64b5f6; }
+
+  .btn {
+    padding: 8px 20px;
+    border-radius: 8px;
+    border: none;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.3s;
+  }
+  .btn-primary {
+    background: linear-gradient(135deg, #1e5799, #4a2f7a);
+    color: #fff;
+  }
+  .btn-primary:hover {
+    box-shadow: 0 4px 16px rgba(100, 150, 255, 0.3);
+    transform: translateY(-1px);
+  }
+  .btn-danger {
+    background: rgba(255, 80, 80, 0.15);
+    color: #ff6b6b;
+    border: 1px solid rgba(255, 80, 80, 0.2);
+  }
+  .btn-danger:hover { background: rgba(255, 80, 80, 0.25); }
+  .btn-sm { padding: 4px 12px; font-size: 12px; }
+
+  .btn-row { display: flex; gap: 10px; margin-top: 16px; flex-wrap: wrap; }
+
+  .color-dot-input {
+    width: 32px; height: 32px;
+    border-radius: 50%;
+    border: 2px solid rgba(255,255,255,0.1);
+    cursor: pointer;
+    overflow: hidden;
+    position: relative;
+  }
+  .color-dot-input input[type="color"] {
+    position: absolute;
+    width: 150%; height: 150%;
+    top: -25%; left: -25%;
+    cursor: pointer;
+    border: none;
+    background: none;
+  }
+
+  /* ========== 滑块 ========== */
+  .slider-group {
+    display: flex; align-items: center; gap: 10px;
+  }
+  .slider-group input[type="range"] {
+    flex: 1;
+    -webkit-appearance: none;
+    height: 4px;
+    border-radius: 2px;
+    background: rgba(255,255,255,0.1);
+    outline: none;
+  }
+  .slider-group input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 16px; height: 16px;
+    border-radius: 50%;
+    background: #64b5f6;
+    cursor: pointer;
+    box-shadow: 0 0 8px rgba(100, 180, 255, 0.5);
+  }
+  .slider-val {
+    min-width: 30px;
+    text-align: right;
+    font-size: 14px;
+    font-weight: bold;
+    color: #b0c4e8;
+  }
+
+  /* ========== 播放控制栏 ========== */
+  .play-bar {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    margin-top: 16px;
+    padding-top: 14px;
+    border-top: 1px solid rgba(100,180,255,0.08);
+  }
+  .play-btn {
+    width: 48px; height: 48px;
+    border-radius: 50%;
+    border: 2px solid rgba(100,180,255,0.3);
+    background: linear-gradient(135deg, rgba(30,58,95,0.7), rgba(42,31,78,0.7));
+    color: #a0c4ff;
+    font-size: 20px;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.3s;
+    box-shadow: 0 0 20px rgba(100,150,255,0.1);
+  }
+  .play-btn:hover {
+    border-color: #64b5f6;
+    box-shadow: 0 0 30px rgba(100,150,255,0.25);
+    transform: scale(1.1);
+    color: #fff;
+  }
+  .play-btn.playing {
+    border-color: #ce93d8;
+    background: linear-gradient(135deg, rgba(109,40,217,0.5), rgba(30,58,138,0.5));
+    box-shadow: 0 0 30px rgba(206,147,216,0.3);
+    animation: playPulse 2s ease-in-out infinite;
+  }
+  @keyframes playPulse {
+    0%, 100% { box-shadow: 0 0 20px rgba(206,147,216,0.2); }
+    50% { box-shadow: 0 0 35px rgba(206,147,216,0.45); }
+  }
+  .play-nav-btn {
+    width: 36px; height: 36px;
+    border-radius: 50%;
+    border: 1px solid rgba(100,180,255,0.15);
+    background: rgba(255,255,255,0.03);
+    color: #7a9abb;
+    font-size: 16px;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.3s;
+  }
+  .play-nav-btn:hover {
+    border-color: rgba(100,180,255,0.4);
+    color: #b0d0ff;
+    background: rgba(255,255,255,0.06);
+  }
+  .play-progress {
+    display: flex; gap: 5px; align-items: center;
+  }
+  .play-dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.12);
+    transition: all 0.4s;
+    cursor: pointer;
+  }
+  .play-dot.active {
+    background: #64b5f6;
+    box-shadow: 0 0 8px rgba(100,180,255,0.5);
+    transform: scale(1.4);
+  }
+  .play-label {
+    font-size: 12px;
+    color: #5a6a8a;
+    min-width: 50px;
+    text-align: center;
+  }
+
+  /* ========== 动画 ========== */
+  @keyframes radarGrow {
+    0% { transform: scale(0); opacity: 0; }
+    60% { opacity: 0.8; }
+    100% { transform: scale(1); opacity: 1; }
+  }
+  .radar-data-polygon {
+    transform-origin: center;
+    animation: radarGrow 1s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  }
+  @keyframes fadeInUp {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .fade-in { animation: fadeInUp 0.5s ease forwards; }
+
+  /* ========== 提示框 ========== */
+  .tooltip {
+    position: absolute;
+    background: rgba(15, 22, 40, 0.95);
+    border: 1px solid rgba(100, 180, 255, 0.3);
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 13px;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.2s;
+    z-index: 200;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+    white-space: nowrap;
+  }
+  .tooltip.show { opacity: 1; }
+
+  /* ========== 响应式 ========== */
+  @media (max-width: 900px) {
+    .radar-page { flex-direction: column; }
+    .radar-container { min-width: auto; }
+    .radar-body { flex-direction: column; gap: 20px; max-width: 100%; }
+    .radar-left { width: 100%; }
+    .radar-right { width: 100%; }
+    .plant-display img { max-width: 400px; }
+    .header { padding: 12px 16px; flex-wrap: wrap; gap: 10px; }
+    .page { padding: 16px; }
+    .plant-cards-grid { grid-template-columns: 1fr; }
+    .input-page { padding: 16px; }
+    .score-card-float { width: 280px; right: 10px; }
+  }
+  @media (min-width: 1600px) {
+    .plant-cards-grid { grid-template-columns: repeat(auto-fill, minmax(450px, 1fr)); }
+  }
+</style>
+</head>
+<body>
+
+<!-- 动态背景 -->
+<canvas id="bgCanvas"></canvas>
+<div class="bg-glow bg-glow-1"></div>
+<div class="bg-glow bg-glow-2"></div>
+<div class="bg-glow bg-glow-3"></div>
+
+<div class="header">
+  <h1>🌻 PvZ2 斗蛐蛐 · 植物雷达图</h1>
+  <div class="nav-tabs">
+    <button class="nav-tab active" data-page="radar">📊 雷达图</button>
+    <button class="nav-tab" data-page="input">✏️ 数据编辑</button>
+  </div>
+</div>
+
+<!-- ========== 雷达图页面 ========== -->
+<div class="page radar-page active" id="page-radar">
+  <div class="radar-container">
+    <div class="radar-title" id="radarTitle">植物能力雷达图</div>
+    <div class="radar-subtitle" id="radarSubtitle">六维能力对比分析</div>
+    <div class="radar-body">
+      <div class="radar-left">
+        <div class="radar-svg-wrap">
+          <svg id="radarSvg" class="radar-svg" viewBox="0 0 500 500"></svg>
+          <div class="tooltip" id="tooltip"></div>
+        </div>
+        <div class="legend" id="legend"></div>
+      </div>
+      <div class="radar-right">
+        <div class="plant-display" id="plantDisplay">
+          <div class="plant-display-empty">← 请选择一株植物<br>查看能力详情</div>
+        </div>
+      </div>
+    </div>
+    <!-- 播放控制栏 -->
+    <div class="play-bar" id="playBar">
+      <button class="play-nav-btn" onclick="prevPlant()" title="上一株">◀</button>
+      <button class="play-btn" id="playBtn" onclick="toggleAutoplay()" title="播放/暂停">▶</button>
+      <button class="play-nav-btn" onclick="nextPlant()" title="下一株">▶</button>
+      <div class="play-progress" id="playProgress"></div>
+      <div class="play-label" id="playLabel">点击播放</div>
+    </div>
+  </div>
+</div>
+
+<!-- 浮动能力详情卡片 -->
+<div class="score-card-float" id="scoreCardFloat">
+  <div class="score-card-float-card">
+    <div class="score-card-float-header" id="scoreCardHeader">
+      <h3>📈 能力详情</h3>
+      <div class="score-card-float-toggle" id="scoreCardToggle">▼</div>
+    </div>
+    <div class="score-card-float-body" id="scoreCardBody">
+      <div id="scoreDetails"></div>
+    </div>
+  </div>
+</div>
+
+<!-- 浮动植物选择器 -->
+<div class="selector-float collapsed" id="selectorFloat">
+  <div class="selector-float-card">
+    <div class="selector-float-header" onclick="toggleSelectorFloat()">
+      <h3>🌿 选择植物</h3>
+      <div class="selector-float-summary" id="selectorSummary">当前：未选择</div>
+      <div class="selector-float-toggle">▼</div>
+    </div>
+    <div class="selector-float-body">
+      <div class="plant-selector" id="plantSelector"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ========== 数据输入页面 ========== -->
+<div class="page input-page" id="page-input">
+  <div class="input-section">
+    <h3>⚙️ 雷达属性设置</h3>
+    <div class="attr-grid" id="attrGrid"></div>
+    <div class="btn-row">
+      <button class="btn btn-primary" onclick="addAttribute()">+ 添加属性</button>
+      <button class="btn btn-primary" onclick="resetAttributes()">恢复默认属性</button>
+      <button class="btn btn-danger" onclick="if(confirm('确定要重置所有数据为默认值吗？此操作不可撤销。')){resetToDefault();renderInputPage();drawRadar();renderPlayProgress();}">🔄 重置全部数据</button>
+    </div>
+  </div>
+
+  <div class="input-section plant-section">
+    <h3>🌱 植物数据管理</h3>
+    <div class="plant-section-body">
+      <div class="plant-cards-grid" id="plantDataCards"></div>
+    </div>
+    <div class="plant-data-btn-bar">
+      <button class="btn btn-primary" onclick="addPlant()">+ 添加植物</button>
+      <button class="btn btn-primary" onclick="exportData()">📋 导出数据</button>
+      <button class="btn btn-primary" onclick="importData()">📥 导入数据</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ==================== 默认数据 ====================
+const DEFAULT_ATTRIBUTES = [
+  { name: '伤害', icon: '⚔️' },
+  { name: '穿透局', icon: '🎯' },
+  { name: '单挑局', icon: '👊' },
+  { name: '胜率', icon: '🏆' },
+  { name: '叠种局', icon: '📚' },
+  { name: '大招局', icon: '⭐' },
+];
+
+const DEFAULT_PLANTS = [];
+
+
+// ==================== 状态 ====================
+function loadData() {
+  try {
+    const saved = localStorage.getItem('pvz2_radar_data');
+    if (saved) {
+      const d = JSON.parse(saved);
+      if (d.attributes && d.plants) return d;
+    }
+  } catch(e) {}
+  return null;
+}
+function saveData() {
+  const d = { attributes: attributes, plants: plants, selectedPlant: selectedPlant };
+  localStorage.setItem('pvz2_radar_data', JSON.stringify(d));
+}
+function resetToDefault() {
+  localStorage.removeItem('pvz2_radar_data');
+  attributes = JSON.parse(JSON.stringify(DEFAULT_ATTRIBUTES));
+  plants = JSON.parse(JSON.stringify(DEFAULT_PLANTS));
+  selectedPlant = 0;
+}
+
+const saved = loadData();
+let attributes = saved ? saved.attributes : JSON.parse(JSON.stringify(DEFAULT_ATTRIBUTES));
+let plants = saved ? saved.plants : JSON.parse(JSON.stringify(DEFAULT_PLANTS));
+let selectedPlant = saved && saved.selectedPlant !== undefined ? saved.selectedPlant : 0;
+let animationFrameId = null;
+let autoplayTimer = null;
+let isPlaying = false;
+let prevPolygonValues = null;
+let prevPolygonColor = null;
+let isFirstPolygonDraw = true;
+let polygonAnimId = null;
+let scoreAnimId = null;
+
+// ==================== 拖拽（pointer-based） ====================
+let dragSrcIdx = null;
+let dragMouseX = 0, dragMouseY = 0;
+let dragGhost = null;
+let dragTargetIdx = null;
+let dragScrollTimer = null;
+let dragScrollRAF = null;
+let dragStarted = false;
+let dragStartX = 0, dragStartY = 0, dragSrcCard = null;
+
+// 边缘自动滚动的视觉提示条（拖拽时才显示）
+let dragEdgeHint = null;
+function ensureEdgeHint() {
+  if (dragEdgeHint) return dragEdgeHint;
+  dragEdgeHint = document.createElement('div');
+  dragEdgeHint.id = 'dragEdgeHint';
+  dragEdgeHint.style.cssText = 'position:fixed;left:0;right:0;height:0;z-index:9998;pointer-events:none;opacity:0;transition:opacity .15s, height .15s;';
+  document.body.appendChild(dragEdgeHint);
+  return dragEdgeHint;
+}
+function showEdgeHint(side, strength) {
+  const h = ensureEdgeHint();
+  if (!side) { h.style.opacity = '0'; h.style.height = '0'; return; }
+  const intensity = Math.min(1, strength);
+  if (side === 'top') {
+    h.style.top = '0'; h.style.bottom = 'auto';
+    h.style.height = (60 + intensity * 40) + 'px';
+    h.style.background = 'linear-gradient(to bottom, rgba(100,180,255,' + (0.15 + intensity * 0.25) + '), transparent)';
+  } else {
+    h.style.bottom = '0'; h.style.top = 'auto';
+    h.style.height = (60 + intensity * 40) + 'px';
+    h.style.background = 'linear-gradient(to top, rgba(100,180,255,' + (0.15 + intensity * 0.25) + '), transparent)';
+  }
+  h.style.opacity = '1';
+}
+
+function startCardDrag(startCard, startIdx, clientX, clientY) {
+  dragSrcIdx = startIdx;
+  dragMouseX = clientX;
+  dragMouseY = clientY;
+  dragStarted = false;
+  dragStartX = clientX;
+  dragStartY = clientY;
+  dragSrcCard = startCard;
+  dragTargetIdx = null;
+  if (dragScrollTimer) { clearInterval(dragScrollTimer); dragScrollTimer = null; }
+  if (dragScrollRAF) { cancelAnimationFrame(dragScrollRAF); dragScrollRAF = null; }
+  ensureEdgeHint();
+  // 基于 RAF 的渐进式边缘自动滚动：越靠近屏幕边缘滚动越快
+  const TRIGGER = 0.18;   // 触发区为屏幕上下 18%
+  const MAX_SPEED = 22;   // 最大滚动速度 px/帧
+  function autoScroll() {
+    if (dragSrcIdx === null) { dragScrollRAF = null; showEdgeHint(null, 0); return; }
+    if (!dragStarted) { dragScrollRAF = requestAnimationFrame(autoScroll); return; }
+    const vh = window.innerHeight;
+    const edge = vh * TRIGGER;
+    const el = document.scrollingElement || document.documentElement;
+    let dir = 0, strength = 0;
+    if (dragMouseY < edge) {
+      dir = -1;
+      strength = (edge - dragMouseY) / edge;  // 0~1，越靠上越接近 1
+    } else if (dragMouseY > vh - edge) {
+      dir = 1;
+      strength = (dragMouseY - (vh - edge)) / edge;
+    }
+    if (dir !== 0) {
+      const delta = dir * MAX_SPEED * Math.max(0.2, strength);
+      el.scrollTop = Math.max(0, el.scrollTop + delta);
+      // 同步滚动 body（部分浏览器兼容）
+      if (document.body && document.body.scrollTop !== undefined && document.body !== el) {
+        document.body.scrollTop = Math.max(0, document.body.scrollTop + delta);
+      }
+      showEdgeHint(dir < 0 ? 'top' : 'bottom', strength);
+    } else {
+      showEdgeHint(null, 0);
+    }
+    dragScrollRAF = requestAnimationFrame(autoScroll);
+  }
+  dragScrollRAF = requestAnimationFrame(autoScroll);
+}
+
+function ensureGhostStarted(clientX, clientY) {
+  if (dragStarted) return;
+  const dx = clientX - dragStartX, dy = clientY - dragStartY;
+  if (Math.abs(dx) < 5 && Math.abs(dy) < 5) return;
+  dragStarted = true;
+  if (dragSrcCard) dragSrcCard.classList.add('dragging');
+  const rect = dragSrcCard.getBoundingClientRect();
+  dragGhost = dragSrcCard.cloneNode(true);
+  dragGhost.classList.remove('dragging');
+  dragGhost.style.cssText = `position:fixed;z-index:9999;pointer-events:none;width:${rect.width}px;opacity:0.85;box-shadow:0 8px 30px rgba(0,0,0,0.5);`;
+  document.body.appendChild(dragGhost);
+}
+
+function moveCardDrag(clientX, clientY) {
+  if (!dragStarted || !dragGhost) return;
+  const w = dragGhost.offsetWidth;
+  dragGhost.style.left = (clientX - w/2) + 'px';
+  dragGhost.style.top = (clientY - 30) + 'px';
+  const container = document.getElementById('plantDataCards');
+  if (!container) return;
+
+  // 隐藏 ghost 和占位符以便准确 hit-test
+  dragGhost.style.display = 'none';
+  let ph = document.getElementById('dragPlaceholder');
+  if (ph) ph.style.display = 'none';
+
+  // 所有卡片都参与命中检测（含源卡片，以便精确拖回原位）
+  const allCards = Array.from(container.querySelectorAll('.plant-data-card'));
+  // 非源卡片用于布局检测和占位符参考节点
+  const cards = allCards.filter(c => !c.classList.contains('dragging'));
+
+  // 检测布局：横向网格（同行多列）还是纵向列表
+  let useHorizontal = false;
+  if (allCards.length >= 2) {
+    const r0 = allCards[0].getBoundingClientRect();
+    const r1 = allCards[1].getBoundingClientRect();
+    if (Math.abs(r0.top - r1.top) < 10) useHorizontal = true; // 两张卡片在同一行 → 网格
+  }
+
+  let hoverCard = null, hoverBefore = true;
+  let insertIdx = plants.length; // 默认插最后
+
+  // 1. 命中检测：鼠标直接在某张卡片矩形内（含 8px 容差）——含源卡片
+  for (const c of allCards) {
+    const r = c.getBoundingClientRect();
+    if (clientX >= r.left - 8 && clientX <= r.right + 8 && clientY >= r.top - 8 && clientY <= r.bottom + 8) {
+      hoverCard = c;
+      const cIdx = parseInt(c.dataset.idx);
+      if (useHorizontal) {
+        hoverBefore = clientX < r.left + r.width / 2;
+      } else {
+        hoverBefore = clientY < r.top + r.height / 2;
+      }
+      insertIdx = hoverBefore ? cIdx : cIdx + 1;
+      break;
+    }
+  }
+
+  // 2. 兜底：鼠标在卡片间隙 → 找第一张顶边在鼠标下方的卡片，插它前面
+  if (!hoverCard) {
+    for (const c of cards) {
+      const r = c.getBoundingClientRect();
+      if (clientY < r.top && clientX >= r.left - 30 && clientX <= r.right + 30) {
+        hoverCard = c;
+        hoverBefore = true;
+        insertIdx = parseInt(c.dataset.idx);
+        break;
+      }
+    }
+  }
+
+  // 3. 仍无命中：判断在容器上半还是下半
+  if (!hoverCard) {
+    const cr = container.getBoundingClientRect();
+    if (clientY < cr.top + cr.height / 2) insertIdx = 0;
+    else insertIdx = plants.length;
+  }
+  dragTargetIdx = insertIdx;
+
+  // 判定是否拖回原位（insertIdx 等于 fromIdx 或 fromIdx+1 都算原位）
+  const isOriginalPos = (insertIdx === dragSrcIdx || insertIdx === dragSrcIdx + 1);
+
+  // 高亮反馈（源卡片不高亮）
+  cards.forEach(c => c.classList.remove('drag-over'));
+  if (hoverCard && !hoverCard.classList.contains('dragging')) hoverCard.classList.add('drag-over');
+
+  // 创建占位符
+  if (!ph) {
+    ph = document.createElement('div');
+    ph.id = 'dragPlaceholder';
+    ph.className = 'drag-placeholder';
+    ph.style.margin = '8px 0';
+    ph.style.height = (dragSrcCard ? dragSrcCard.offsetHeight : 130) + 'px';
+  }
+
+  if (isOriginalPos) {
+    // 拖回原位：隐藏占位符（原位已有半透明源卡片作反馈）
+    ph.style.display = 'none';
+  } else {
+    // 找到 insertIdx 对应的参考节点（第一张 idx >= insertIdx 的非拖动卡片）
+    let refNode = null;
+    for (const c of cards) {
+      if (parseInt(c.dataset.idx) >= insertIdx) { refNode = c; break; }
+    }
+    if (refNode) {
+      if (ph.nextSibling !== refNode && ph !== refNode.previousSibling) {
+        container.insertBefore(ph, refNode);
+      }
+    } else {
+      if (container.lastElementChild !== ph) container.appendChild(ph);
+    }
+    ph.style.display = '';
+  }
+  dragGhost.style.display = '';
+}
+
+function endCardDrag(skipReorder) {
+  if (dragSrcIdx === null) return;
+  const container = document.getElementById('plantDataCards');
+  if (container) container.querySelectorAll('.plant-data-card').forEach(c => c.classList.remove('drag-over', 'dragging'));
+  const ph = document.getElementById('dragPlaceholder');
+  if (ph) ph.remove();
+  if (dragGhost) { dragGhost.remove(); dragGhost = null; }
+  if (dragScrollTimer) { clearInterval(dragScrollTimer); dragScrollTimer = null; }
+  if (dragScrollRAF) { cancelAnimationFrame(dragScrollRAF); dragScrollRAF = null; }
+  showEdgeHint(null, 0);
+  if (!skipReorder && dragStarted && dragTargetIdx !== null) {
+    const fromIdx = dragSrcIdx;
+    let insertIdx = dragTargetIdx;
+    // 插入位置与原位相同则跳过
+    if (insertIdx !== fromIdx && insertIdx !== fromIdx + 1) {
+      const moved = plants.splice(fromIdx, 1)[0];
+      // 移除后，若 insertIdx 在 fromIdx 之后，实际插入位置前移一位
+      const toIdx = insertIdx > fromIdx ? insertIdx - 1 : insertIdx;
+      plants.splice(toIdx, 0, moved);
+      // selectedPlant 重映射
+      if (selectedPlant === fromIdx) {
+        selectedPlant = toIdx;
+      } else {
+        if (selectedPlant > fromIdx) selectedPlant--;
+        if (selectedPlant >= toIdx) selectedPlant++;
+      }
+      saveData();
+      renderPlantDataCards();
+      drawRadar();
+    }
+  }
+  dragSrcIdx = null;
+  dragTargetIdx = null;
+  dragStarted = false;
+  dragSrcCard = null;
+}
+
+// 全局鼠标追踪（mousemove + pointermove 双重保障）
+document.addEventListener('mousemove', e => {
+  dragMouseX = e.clientX;
+  dragMouseY = e.clientY;
+});
+document.addEventListener('pointermove', e => {
+  dragMouseX = e.clientX;
+  dragMouseY = e.clientY;
+  if (dragSrcIdx !== null) {
+    if (dragStarted) moveCardDrag(e.clientX, e.clientY);
+    else ensureGhostStarted(e.clientX, e.clientY);
+  }
+}, { capture: true, passive: true });
+document.addEventListener('pointerup', e => {
+  if (dragSrcIdx !== null) {
+    dragMouseX = e.clientX;
+    dragMouseY = e.clientY;
+    if (!dragStarted && Math.abs(e.clientX - dragStartX) < 5 && Math.abs(e.clientY - dragStartY) < 5)
+      endCardDrag(true);
+    else endCardDrag();
+  }
+});
+document.addEventListener('mouseup', () => {
+  if (dragSrcIdx !== null) endCardDrag();
+});
+
+// ==================== 页面切换 ====================
+document.querySelectorAll('.nav-tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    tab.classList.add('active');
+    const pageId = 'page-' + tab.dataset.page;
+    document.getElementById(pageId).classList.add('active');
+    // 切换到数据编辑页时隐藏浮动卡片
+    const scoreCard = document.getElementById('scoreCardFloat');
+    const selectorCard = document.getElementById('selectorFloat');
+    if (tab.dataset.page === 'input') {
+      if (scoreCard) scoreCard.style.display = 'none';
+      if (selectorCard) selectorCard.style.display = 'none';
+    } else {
+      if (scoreCard) scoreCard.style.display = '';
+      if (selectorCard) selectorCard.style.display = '';
+    }
+    if (tab.dataset.page === 'input') renderInputPage();
+  });
+});
+
+// ==================== 雷达图绘制 ====================
+const SVG_NS = 'http://www.w3.org/2000/svg';
+const CX = 250, CY = 250, R = 190;
+
+function polarToCart(angle, radius) {
+  const a = (angle - 90) * Math.PI / 180;
+  return { x: CX + radius * Math.cos(a), y: CY + radius * Math.sin(a) };
+}
+
+function hexPoints(radius) {
+  const pts = [];
+  for (let i = 0; i < 6; i++) {
+    const p = polarToCart(i * 60, radius);
+    pts.push(`${p.x},${p.y}`);
+  }
+  return pts.join(' ');
+}
+
+function drawRadar() {
+  const svg = document.getElementById('radarSvg');
+  svg.innerHTML = '';
+
+  const n = attributes.length;
+  const angleStep = 360 / n;
+
+  // Defs - glow filter
+  const defs = document.createElementNS(SVG_NS, 'defs');
+  const filter = document.createElementNS(SVG_NS, 'filter');
+  filter.setAttribute('id', 'glow');
+  const blur = document.createElementNS(SVG_NS, 'feGaussianBlur');
+  blur.setAttribute('stdDeviation', '3');
+  blur.setAttribute('result', 'glow');
+  filter.appendChild(blur);
+  const merge = document.createElementNS(SVG_NS, 'feMerge');
+  const mn1 = document.createElementNS(SVG_NS, 'feMergeNode');
+  mn1.setAttribute('in', 'glow');
+  const mn2 = document.createElementNS(SVG_NS, 'feMergeNode');
+  mn2.setAttribute('in', 'SourceGraphic');
+  merge.appendChild(mn1); merge.appendChild(mn2);
+  filter.appendChild(merge);
+  defs.appendChild(filter);
+  svg.appendChild(defs);
+
+  // 背景网格（5层）
+  for (let level = 5; level >= 1; level--) {
+    const r = R * level / 5;
+    const poly = document.createElementNS(SVG_NS, 'polygon');
+    const pts = [];
+    for (let i = 0; i < n; i++) {
+      const p = polarToCart(i * angleStep, r);
+      pts.push(`${p.x},${p.y}`);
+    }
+    poly.setAttribute('points', pts.join(' '));
+    poly.setAttribute('fill', level % 2 === 0 ? 'rgba(30,50,80,0.35)' : 'rgba(20,35,60,0.35)');
+    poly.setAttribute('stroke', 'rgba(100,180,255,0.22)');
+    poly.setAttribute('stroke-width', '1.5');
+    svg.appendChild(poly);
+
+    // 刻度数字
+    if (level < 5) {
+      const label = document.createElementNS(SVG_NS, 'text');
+      const pos = polarToCart(0, r);
+      label.setAttribute('x', pos.x + 4);
+      label.setAttribute('y', pos.y - 4);
+      label.setAttribute('fill', 'rgba(100,150,200,0.5)');
+      label.setAttribute('font-size', '11');
+      label.textContent = (level * 20).toString();
+      svg.appendChild(label);
+    }
+    // 胜率轴特殊标注：每条线10%，10%~40%
+    if (level < 5) {
+      const wrIdx = attributes.findIndex(a => a.name === '胜率');
+      if (wrIdx >= 0) {
+        const wrPos = polarToCart(wrIdx * angleStep, r);
+        const wrLabel = document.createElementNS(SVG_NS, 'text');
+        wrLabel.setAttribute('x', wrPos.x - 2);
+        wrLabel.setAttribute('y', wrPos.y + 9);
+        wrLabel.setAttribute('fill', 'rgba(100,150,200,0.5)');
+        wrLabel.setAttribute('font-size', '10');
+        wrLabel.setAttribute('text-anchor', 'end');
+        wrLabel.setAttribute('font-weight', 'bold');
+        wrLabel.textContent = (level * 10) + '%';
+        svg.appendChild(wrLabel);
+      }
+    }
+  }
+
+  // 轴线
+  for (let i = 0; i < n; i++) {
+    const p = polarToCart(i * angleStep, R);
+    const line = document.createElementNS(SVG_NS, 'line');
+    line.setAttribute('x1', CX); line.setAttribute('y1', CY);
+    line.setAttribute('x2', p.x); line.setAttribute('y2', p.y);
+    line.setAttribute('stroke', 'rgba(100,180,255,0.25)');
+    line.setAttribute('stroke-width', '1.5');
+    svg.appendChild(line);
+  }
+
+  // 属性标签
+  for (let i = 0; i < n; i++) {
+    const p = polarToCart(i * angleStep, R + 28);
+    const text = document.createElementNS(SVG_NS, 'text');
+    text.setAttribute('x', p.x);
+    text.setAttribute('y', p.y);
+    text.setAttribute('text-anchor', 'middle');
+    text.setAttribute('dominant-baseline', 'central');
+    text.setAttribute('fill', '#a0bce8');
+    text.setAttribute('font-size', '14');
+    text.setAttribute('font-weight', 'bold');
+    text.textContent = (attributes[i].icon || '') + ' ' + attributes[i].name;
+    svg.appendChild(text);
+  }
+
+  // 平均值色块（基于所有植物数据）
+  if (plants.length > 0) {
+    const avgData = {};
+    attributes.forEach(attr => {
+      let sum = 0, count = 0;
+      plants.forEach(p => {
+        if (p.data[attr.name] !== undefined) {
+          const v = attr.name === '胜率' ? p.data[attr.name] * 2 : p.data[attr.name];
+          sum += (attr.name === '胜率' ? v : Math.min(v, 100)); count++;
+        }
+      });
+      avgData[attr.name] = count > 0 ? sum / count : 0;
+    });
+    const hasAnyData = attributes.some(attr => avgData[attr.name] > 0);
+    if (hasAnyData) {
+      const avgPts = [];
+      for (let i = 0; i < n; i++) {
+        const val = avgData[attributes[i].name] || 0;
+        const r = R * val / 100;
+        const p = polarToCart(i * angleStep, r);
+        avgPts.push(`${p.x},${p.y}`);
+      }
+      const avgPoly = document.createElementNS(SVG_NS, 'polygon');
+      avgPoly.setAttribute('points', avgPts.join(' '));
+      avgPoly.setAttribute('fill', 'rgba(255,255,255,0.05)');
+      avgPoly.setAttribute('stroke', 'rgba(255,255,255,0.25)');
+      avgPoly.setAttribute('stroke-width', '1.5');
+      avgPoly.setAttribute('stroke-dasharray', '6,4');
+      svg.appendChild(avgPoly);
+    }
+  }
+
+  // 数据色块（仅当前选中植物）
+  if (selectedPlant >= 0 && selectedPlant < plants.length) {
+    const plant = plants[selectedPlant];
+    const newValues = [];
+    const dataPoints = [];
+    for (let i = 0; i < n; i++) {
+      const val = plant.data[attributes[i].name] || 0;
+      const radarVal = attributes[i].name === '胜率' ? val * 2 : val;
+      newValues.push(radarVal);
+      const r = R * radarVal / 100;
+      const p = polarToCart(i * angleStep, r);
+      dataPoints.push({ x: p.x, y: p.y, val, attr: attributes[i].name, plant: plant.name });
+    }
+    const color = plant.color || '#64b5f6';
+
+    // 创建多边形
+    const poly = document.createElementNS(SVG_NS, 'polygon');
+    poly.setAttribute('fill', hexToRgba(color, 0.18));
+    poly.setAttribute('stroke', color);
+    poly.setAttribute('stroke-width', '2.5');
+    poly.setAttribute('stroke-linejoin', 'round');
+    poly.setAttribute('filter', 'url(#glow)');
+    poly.classList.add('radar-data-polygon');
+
+    if (isFirstPolygonDraw || !prevPolygonValues) {
+      // 首次：从中心弹出动画
+      const centerPts = [];
+      for (let i = 0; i < n; i++) { centerPts.push(`${CX},${CY}`); }
+      poly.setAttribute('points', centerPts.join(' '));
+      poly.style.animation = 'radarGrow 2s cubic-bezier(0.34, 1.56, 0.64, 1) forwards';
+      const targetPts = [];
+      for (let i = 0; i < n; i++) {
+        const r = R * newValues[i] / 100;
+        const p = polarToCart(i * angleStep, r);
+        targetPts.push(`${p.x},${p.y}`);
+      }
+      setTimeout(() => {
+        poly.setAttribute('points', targetPts.join(' '));
+      }, 50);
+      isFirstPolygonDraw = false;
+    } else {
+      // 切换：从旧形状平滑变形
+      poly.style.animation = 'none';
+      const startValues = prevPolygonValues.slice();
+      const startPts = [];
+      for (let i = 0; i < n; i++) {
+        const r = R * startValues[i] / 100;
+        const p = polarToCart(i * angleStep, r);
+        startPts.push(`${p.x},${p.y}`);
+      }
+      poly.setAttribute('points', startPts.join(' '));
+
+      if (polygonAnimId) cancelAnimationFrame(polygonAnimId);
+      const startTime = performance.now();
+      const duration = 1600;
+      const oldColor = prevPolygonColor || color;
+
+      function morphPolygon(timestamp) {
+        const elapsed = timestamp - startTime;
+        const rawProgress = Math.min(elapsed / duration, 1);
+        const progress = rawProgress < 0.5
+          ? 4 * rawProgress * rawProgress * rawProgress
+          : 1 - Math.pow(-2 * rawProgress + 2, 3) / 2;
+
+        const pts = [];
+        for (let i = 0; i < n; i++) {
+          const val = startValues[i] + (newValues[i] - startValues[i]) * progress;
+          const r = R * val / 100;
+          const p = polarToCart(i * angleStep, r);
+          pts.push(`${p.x},${p.y}`);
+        }
+        poly.setAttribute('points', pts.join(' '));
+
+        // 颜色插值
+        const cr = Math.round(parseInt(oldColor.slice(1,3),16) + (parseInt(color.slice(1,3),16) - parseInt(oldColor.slice(1,3),16)) * progress);
+        const cg = Math.round(parseInt(oldColor.slice(3,5),16) + (parseInt(color.slice(3,5),16) - parseInt(oldColor.slice(3,5),16)) * progress);
+        const cb = Math.round(parseInt(oldColor.slice(5,7),16) + (parseInt(color.slice(5,7),16) - parseInt(oldColor.slice(5,7),16)) * progress);
+        const currentColor = `rgb(${cr},${cg},${cb})`;
+        poly.setAttribute('fill', `rgba(${cr},${cg},${cb},0.18)`);
+        poly.setAttribute('stroke', currentColor);
+
+        if (rawProgress < 1) {
+          polygonAnimId = requestAnimationFrame(morphPolygon);
+        }
+      }
+      polygonAnimId = requestAnimationFrame(morphPolygon);
+    }
+
+    prevPolygonValues = newValues;
+    prevPolygonColor = color;
+
+    poly.addEventListener('mouseenter', (e) => {
+      const tip = document.getElementById('tooltip');
+      let html = `<strong style="color:${color}">${plant.name}</strong><br>`;
+      dataPoints.forEach(dp => { html += `${dp.attr}: <span style="color:${color};font-weight:bold">${dp.val}</span><br>`; });
+      tip.innerHTML = html;
+      tip.classList.add('show');
+      const rect = svg.getBoundingClientRect();
+      tip.style.left = (e.clientX - rect.left + 12) + 'px';
+      tip.style.top = (e.clientY - rect.top - 10) + 'px';
+    });
+    poly.addEventListener('mousemove', (e) => {
+      const tip = document.getElementById('tooltip');
+      const rect = svg.getBoundingClientRect();
+      tip.style.left = (e.clientX - rect.left + 12) + 'px';
+      tip.style.top = (e.clientY - rect.top - 10) + 'px';
+    });
+    poly.addEventListener('mouseleave', () => {
+      document.getElementById('tooltip').classList.remove('show');
+    });
+    svg.appendChild(poly);
+  } else {
+    prevPolygonValues = null;
+    isFirstPolygonDraw = true;
+  }
+
+  // 更新图例
+  renderLegend();
+  renderScoreDetails();
+  renderPlantSelector();
+  renderPlantDisplay();
+  renderPlayProgress();
+}
+
+function hexToRgba(hex, alpha) {
+  const r = parseInt(hex.slice(1,3), 16);
+  const g = parseInt(hex.slice(3,5), 16);
+  const b = parseInt(hex.slice(5,7), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
+// 评级系统: 95-110 = S-, S, S+
+function getRating(avg) {
+  const tiers = [
+    { min: 195, label: 'SSS+', rank: 'sss-plus' },
+    { min: 180, label: 'SSS',  rank: 'sss' },
+    { min: 165, label: 'SSS-', rank: 'sss-minus' },
+    { min: 150, label: 'SS+',  rank: 'ss-plus' },
+    { min: 135, label: 'SS',   rank: 'ss' },
+    { min: 120, label: 'SS-',  rank: 'ss-minus' },
+    { min: 105, label: 'S+',   rank: 's-plus' },
+    { min: 95,  label: 'S',    rank: 's' },
+    { min: 90,  label: 'S-',   rank: 's-minus' },
+    { min: 85,  label: 'A+',   rank: 'a-plus' },
+    { min: 80,  label: 'A',    rank: 'a' },
+    { min: 75,  label: 'A-',   rank: 'a-minus' },
+    { min: 65,  label: 'B+',   rank: 'b-plus' },
+    { min: 60,  label: 'B',    rank: 'b' },
+    { min: 55,  label: 'B-',   rank: 'b-minus' },
+    { min: 50,  label: 'C+',   rank: 'c-plus' },
+    { min: 45,  label: 'C',    rank: 'c' },
+    { min: 40,  label: 'C-',   rank: 'c-minus' },
+    { min: 35,  label: 'D+',   rank: 'd-plus' },
+    { min: 30,  label: 'D',    rank: 'd' },
+    { min: 0,   label: 'D-',   rank: 'd-minus' },
+  ];
+  for (const t of tiers) {
+    if (avg >= t.min) return t;
+  }
+  return { label: 'D-', rank: 'd' };
+}
+
+// 单项分值对应评级颜色
+function getValueColor(val) {
+  if (val >= 145) return '#fe2020'; // 红
+  if (val >= 100) return '#ffd54f'; // 金
+  if (val >= 80)  return '#ce93d8'; // 紫
+  if (val >= 55)  return '#42a5f5'; // 蓝
+  if (val >= 30)  return '#66bb6a'; // 绿
+  return '#78909c'; // 灰
+}
+
+function renderLegend() {
+  const container = document.getElementById('legend');
+  container.innerHTML = '';
+
+  if (selectedPlant >= 0 && selectedPlant < plants.length) {
+    const plant = plants[selectedPlant];
+    const item = document.createElement('div');
+    item.className = 'legend-item';
+    const imgHtml = plant.image ? `<img src="${plant.image}" class="plant-img-sm" alt="">` : `<span class="legend-dot" style="background:${plant.color};border-color:${plant.color}"></span>`;
+    item.innerHTML = `${imgHtml}<span>${plant.name}</span>`;
+    container.appendChild(item);
+  }
+
+  if (plants.length > 0) {
+    const avgItem = document.createElement('div');
+    avgItem.className = 'legend-item';
+    avgItem.innerHTML = `<span class="legend-dot" style="background:rgba(255,255,255,0.3);border-color:rgba(255,255,255,0.5);border-style:dashed"></span><span>全植物平均值</span>`;
+    container.appendChild(avgItem);
+  }
+}
+
+function toggleSelectorFloat() {
+  const el = document.getElementById('selectorFloat');
+  if (el) el.classList.toggle('collapsed');
+}
+
+function updateSelectorSummary() {
+  const el = document.getElementById('selectorSummary');
+  if (!el) return;
+  if (selectedPlant >= 0 && selectedPlant < plants.length) {
+    el.textContent = '当前：' + plants[selectedPlant].name;
+  } else {
+    el.textContent = '当前：未选择';
+  }
+}
+
+function renderPlantSelector() {
+  const container = document.getElementById('plantSelector');
+  container.innerHTML = '';
+  plants.forEach((plant, idx) => {
+    const isSelected = selectedPlant === idx;
+    const chip = document.createElement('div');
+    chip.className = 'plant-chip' + (isSelected ? ' selected' : '');
+    chip.style.borderColor = isSelected ? plant.color : '';
+    chip.style.background = isSelected ? hexToRgba(plant.color, 0.12) : '';
+    const imgHtml = plant.image ? `<img src="${plant.image}" class="plant-img-sm" alt="">` : '';
+    chip.innerHTML = `${imgHtml}<span>${plant.name}</span>`;
+    chip.addEventListener('click', () => {
+      selectedPlant = (selectedPlant === idx) ? -1 : idx;
+      saveData();
+      drawRadar();
+      updateSelectorSummary();
+    });
+    container.appendChild(chip);
+  });
+}
+
+function renderPlantDisplay() {
+  const display = document.getElementById('plantDisplay');
+  if (!display) return;
+  display.innerHTML = '';
+  if (selectedPlant < 0 || selectedPlant >= plants.length) {
+    display.innerHTML = '<div class="plant-display-empty">← 请选择一株植物<br>查看能力详情</div>';
+    return;
+  }
+  const plant = plants[selectedPlant];
+  const wrap = document.createElement('div');
+  wrap.className = 'plant-display-animate';
+  wrap.style.display = 'flex';
+  wrap.style.flexDirection = 'column';
+  wrap.style.alignItems = 'center';
+  if (plant.image) {
+    const img = document.createElement('img');
+    img.src = plant.image;
+    img.alt = plant.name;
+    img.style.width = '90%';
+    img.style.height = '90%';
+    img.style.objectFit = 'contain';
+    img.style.filter = `drop-shadow(0 0 30px ${hexToRgba(plant.color, 0.3)})`;
+    wrap.appendChild(img);
+  } else {
+    const placeholder = document.createElement('div');
+    placeholder.style.cssText = `width:200px;height:200px;border-radius:50%;background:${hexToRgba(plant.color,0.12)};display:flex;align-items:center;justify-content:center;font-size:64px;border:2px solid ${hexToRgba(plant.color,0.2)}`;
+    placeholder.textContent = '🌱';
+    wrap.appendChild(placeholder);
+  }
+  const nameEl = document.createElement('div');
+  nameEl.className = 'plant-display-name';
+  nameEl.style.color = plant.color;
+  nameEl.textContent = plant.name;
+  wrap.appendChild(nameEl);
+  display.appendChild(wrap);
+}
+
+function renderScoreDetails() {
+  const container = document.getElementById('scoreDetails');
+  container.innerHTML = '';
+
+  if (selectedPlant < 0 || selectedPlant >= plants.length) {
+    container.innerHTML = '<div style="color:#5a6a8a;font-size:13px;text-align:center;padding:20px 0;">请选择一株植物查看能力详情</div>';
+    return;
+  }
+
+  const plant = plants[selectedPlant];
+  let total = 0;
+
+  const plantHeader = document.createElement('div');
+  plantHeader.className = 'score-plant-header';
+  plantHeader.innerHTML = `
+    ${plant.image ? `<img src="${plant.image}" class="plant-img" alt="${plant.name}">` : ''}
+    <span class="score-plant-name" style="color:${plant.color}">${plant.name}</span>
+  `;
+  container.appendChild(plantHeader);
+
+  attributes.forEach((attr, idx) => {
+    const val = plant.data[attr.name] || 0;
+    const avgVal = attr.name === '胜率' ? val * 2 : val;
+    total += avgVal;
+    const barColor = getValueColor(val);
+    // 不预加 overdrive 类（避免 CSS !important 强制 width:100% 导致不从 0 开始）
+    const overdriveClass = '';
+    const row = document.createElement('div');
+    row.className = 'score-row';
+    row.innerHTML = `
+      <span class="score-label">${attr.icon || ''} ${attr.name}</span>
+      <div class="score-bar-bg">
+        <div class="score-bar-fill${overdriveClass}" data-target="${val}" data-idx="${idx}" style="width:0%"></div>
+      </div>
+      <span class="score-value" data-target="${val}" data-idx="${idx}" data-percent="${attr.name === '胜率' ? '1' : '0'}">0</span>
+    `;
+    container.appendChild(row);
+  });
+
+  const rawAvg = total / attributes.length;
+  const avg = Math.min(rawAvg, 200).toFixed(1);
+  const rating = getRating(parseFloat(avg));
+  const totalDiv = document.createElement('div');
+  totalDiv.className = 'total-score';
+  totalDiv.innerHTML = `
+    <div class="total-score-row">
+      <div class="total-score-col">
+        <div class="num">${avg}</div>
+        <div class="label">${plant.name} · 综合评分</div>
+      </div>
+      <div class="rating-badge rank-${rating.rank}" data-text="${rating.label}">${rating.label}</div>
+    </div>
+  `;
+  container.appendChild(totalDiv);
+
+  // 启动进度条动画
+  animateScoreBars();
+}
+
+function animateScoreBars() {
+  if (scoreAnimId) cancelAnimationFrame(scoreAnimId);
+  const bars = document.querySelectorAll('.score-bar-fill[data-target]');
+  const values = document.querySelectorAll('.score-value[data-target]');
+  if (bars.length === 0) return;
+
+  // 每条进度条独立动画，高分持续时间更长（越接近高分越慢）
+  const barData = [];
+  bars.forEach((bar, i) => {
+    const target = parseInt(bar.dataset.target);
+    const baseDuration = 900;
+    const extraDuration = target * 6; // 高分条多出的时间
+    barData.push({ bar, valEl: values[i], target, duration: baseDuration + extraDuration, done: false });
+  });
+
+  const startTime = performance.now();
+
+  function animate(timestamp) {
+    const elapsed = timestamp - startTime;
+    let allDone = true;
+
+    barData.forEach((item) => {
+      const rawProgress = Math.min(elapsed / item.duration, 1);
+      // ease-in-out quart: 起步慢 → 中间快 → 末尾最慢
+      const progress = rawProgress < 0.5
+        ? 8 * rawProgress * rawProgress * rawProgress * rawProgress
+        : 1 - Math.pow(-2 * rawProgress + 2, 4) / 2;
+
+      const isOverdrive = item.target > 200;
+      // overdrive: 动画过程中用0-200做色阶遍历，最后才爆
+      const displayTarget = isOverdrive ? 200 : item.target;
+      const currentVal = Math.round(displayTarget * progress);
+      const inOverdrive = isOverdrive && rawProgress >= 0.98;
+      const color = inOverdrive ? '#c080e0' : getValueColor(currentVal);
+      const displayWidth = inOverdrive ? 100 : Math.min(currentVal, 100);
+      item.bar.style.width = displayWidth + '%';
+      if (!inOverdrive) { item.bar.style.background = color; item.bar.classList.remove('overdrive'); }
+
+      const valEl = item.valEl;
+      if (valEl) {
+        const isPercent = valEl.dataset.percent === '1';
+        valEl.style.color = color;
+        const suffix = inOverdrive ? ' 💥' : (currentVal > 160 ? ' 🔥' : '');
+        valEl.textContent = Math.round(item.target * progress) + (isPercent ? '%' : '') + suffix;
+      }
+
+      if (rawProgress < 1) allDone = false;
+      else if (isOverdrive) { item.bar.classList.add('overdrive'); item.bar.style.background = ''; }
+    });
+
+    if (!allDone) {
+      scoreAnimId = requestAnimationFrame(animate);
+    }
+  }
+  scoreAnimId = requestAnimationFrame(animate);
+}
+
+// ==================== 数据输入页面 ====================
+function renderInputPage() {
+  renderAttrGrid();
+  renderPlantDataCards();
+}
+
+function renderAttrGrid() {
+  const grid = document.getElementById('attrGrid');
+  grid.innerHTML = '';
+  attributes.forEach((attr, idx) => {
+    const group = document.createElement('div');
+    group.className = 'attr-input-group';
+    group.innerHTML = `
+      <label>${attr.icon || '📌'} 属性 ${idx + 1}</label>
+      <input type="text" value="${attr.name}" onchange="updateAttr(${idx}, this.value)" placeholder="属性名称">
+    `;
+    const delBtn = document.createElement('button');
+    delBtn.className = 'btn btn-danger btn-sm';
+    delBtn.textContent = '删除';
+    delBtn.style.marginTop = '4px';
+    delBtn.addEventListener('click', () => removeAttribute(idx));
+    group.appendChild(delBtn);
+    grid.appendChild(group);
+  });
+}
+
+function updateAttr(idx, name) {
+  const oldName = attributes[idx].name;
+  attributes[idx].name = name;
+  plants.forEach(p => {
+    if (p.data[oldName] !== undefined && oldName !== name) {
+      p.data[name] = p.data[oldName];
+      delete p.data[oldName];
+    }
+  });
+  saveData();
+}
+
+function addAttribute() {
+  const newAttr = { name: '新属性', icon: '📌' };
+  attributes.push(newAttr);
+  plants.forEach(p => { p.data['新属性'] = 50; });
+  saveData();
+  renderAttrGrid();
+}
+
+function removeAttribute(idx) {
+  if (attributes.length <= 3) { alert('至少保留3个属性'); return; }
+  const name = attributes[idx].name;
+  attributes.splice(idx, 1);
+  plants.forEach(p => { delete p.data[name]; });
+  saveData();
+  renderAttrGrid();
+}
+
+function resetAttributes() {
+  attributes = JSON.parse(JSON.stringify(DEFAULT_ATTRIBUTES));
+  plants.forEach(p => {
+    const newData = {};
+    attributes.forEach(a => { newData[a.name] = p.data[a.name] || 50; });
+    p.data = newData;
+  });
+  saveData();
+  renderAttrGrid();
+}
+
+function renderPlantDataCards() {
+  const container = document.getElementById('plantDataCards');
+  container.innerHTML = '';
+  dragSrcIdx = null;
+
+  plants.forEach((plant, pIdx) => {
+    const card = document.createElement('div');
+    card.className = 'plant-data-card';
+    card.dataset.idx = pIdx;
+
+    const header = document.createElement('div');
+    header.className = 'plant-data-header';
+    header.innerHTML = `
+      <div style="display:flex;align-items:center;gap:10px;">
+        <div class="drag-handle" title="拖拽排序">⠿</div>
+        <div class="plant-img-upload" style="${plant.image ? '' : 'border-color:rgba(100,180,255,0.25)'}">
+          ${plant.image ? `<img src="${plant.image}" alt="">` : '📷'}
+          <input type="file" accept="image/*" onchange="uploadPlantImage(${pIdx}, this)">
+        </div>
+        <div class="color-dot-input" style="background:${plant.color}">
+          <input type="color" value="${plant.color}" onchange="updatePlantColor(${pIdx}, this.value)">
+        </div>
+        <input class="plant-name-input" value="${plant.name}" onchange="updatePlantName(${pIdx}, this.value)">
+      </div>
+    `;
+    const delBtn = document.createElement('button');
+    delBtn.className = 'btn btn-danger btn-sm';
+    delBtn.textContent = '删除植物';
+    delBtn.addEventListener('click', () => removePlant(pIdx));
+    header.appendChild(delBtn);
+    card.appendChild(header);
+
+    // 属性滑块
+    const grid = document.createElement('div');
+    grid.className = 'attr-grid';
+    attributes.forEach(attr => {
+      const val = plant.data[attr.name] || 0;
+      const group = document.createElement('div');
+      group.className = 'attr-input-group';
+      group.innerHTML = `
+        <label>${attr.icon || '📌'} ${attr.name}</label>
+        <div class="slider-group">
+          <input type="range" min="0" max="${attr.name === '胜率' ? '100' : '200'}" value="${val}" step="1"
+            oninput="updatePlantData(${pIdx}, '${attr.name}', this.value); this.nextElementSibling.textContent=this.value">
+          <span class="slider-val">${val}</span>
+        </div>
+      `;
+      grid.appendChild(group);
+    });
+    card.appendChild(grid);
+
+    // 输入元素不触发拖拽（由 drag-handle 触发）
+    // === Pointer-based 拖拽 ===
+    const dragHandle = card.querySelector('.drag-handle');
+    if (dragHandle) {
+      dragHandle.addEventListener('mousedown', e => {
+        if (e.button !== 0) return;
+        startCardDrag(card, pIdx, e.clientX, e.clientY);
+      });
+      dragHandle.addEventListener('selectstart', e => e.preventDefault());
+    }
+
+    container.appendChild(card);
+  });
+}
+
+function updatePlantColor(idx, color) {
+  plants[idx].color = color;
+  saveData();
+  renderPlantDataCards();
+}
+
+function updatePlantName(idx, name) {
+  plants[idx].name = name;
+  saveData();
+}
+
+function updatePlantData(pIdx, attr, val) {
+  plants[pIdx].data[attr] = parseInt(val);
+  saveData();
+}
+
+function addPlant() {
+  const colors = ['#ff6b6b','#64b5f6','#ffd54f','#81c784','#ce93d8','#4dd0e1','#ff8a65','#ef5350','#a5d6a7','#f48fb1'];
+  const color = colors[plants.length % colors.length];
+  const data = {};
+  attributes.forEach(a => { data[a.name] = 50; });
+  plants.push({ name: '新植物', color, image: '', data });
+  saveData();
+  renderPlantDataCards();
+}
+
+function uploadPlantImage(pIdx, input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    plants[pIdx].image = e.target.result;
+    saveData();
+    renderPlantDataCards();
+  };
+  reader.readAsDataURL(file);
+}
+
+function removePlant(idx) {
+  if (plants.length <= 1) { alert('至少保留1个植物'); return; }
+  plants.splice(idx, 1);
+  if (selectedPlant === idx) selectedPlant = -1;
+  else if (selectedPlant > idx) selectedPlant--;
+  if (selectedPlant < 0 && plants.length > 0) selectedPlant = 0;
+  saveData();
+  renderPlantDataCards();
+}
+
+function exportData() {
+  const data = { attributes, plants };
+  const json = JSON.stringify(data, null, 2);
+  navigator.clipboard.writeText(json).then(() => {
+    alert('数据已复制到剪贴板！');
+  }).catch(() => {
+    const ta = document.createElement('textarea');
+    ta.value = json;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    alert('数据已复制到剪贴板！');
+  });
+}
+
+function importData() {
+  const json = prompt('请粘贴JSON数据：');
+  if (!json) return;
+  try {
+    const data = JSON.parse(json);
+    if (data.attributes) attributes = data.attributes;
+    if (data.plants) plants = data.plants;
+    selectedPlant = 0;
+    saveData();
+    renderInputPage();
+    alert('导入成功！');
+  } catch(e) {
+    alert('数据格式错误：' + e.message);
+  }
+}
+
+// ==================== 能力详情浮动卡片 ====================
+(function initScoreCard() {
+  const card = document.getElementById('scoreCardFloat');
+  const header = document.getElementById('scoreCardHeader');
+  const toggle = document.getElementById('scoreCardToggle');
+  const body = document.getElementById('scoreCardBody');
+  let hasDragged = false;
+  let dragOffsetX = 0, dragOffsetY = 0;
+  let startMouseX = 0, startMouseY = 0;
+
+  // 恢复位置
+  const savedPos = localStorage.getItem('scoreCardPos');
+  if (savedPos) {
+    try {
+      const pos = JSON.parse(savedPos);
+      card.style.left = pos.left + 'px';
+      card.style.top = pos.top + 'px';
+      card.style.right = 'auto';
+    } catch(e) {}
+  }
+  const savedCollapsed = localStorage.getItem('scoreCardCollapsed');
+  if (savedCollapsed === 'true') {
+    card.classList.add('collapsed');
+  }
+
+  // 拖动开始
+  header.addEventListener('mousedown', (e) => {
+    if (e.target === toggle || e.target.closest('.score-card-float-toggle')) return;
+    hasDragged = false;
+    startMouseX = e.clientX;
+    startMouseY = e.clientY;
+    const rect = card.getBoundingClientRect();
+    dragOffsetX = e.clientX - rect.left;
+    dragOffsetY = e.clientY - rect.top;
+    card.classList.add('score-card-float-dragging');
+    e.preventDefault();
+  });
+
+  document.addEventListener('mousemove', (e) => {
+    if (!card.classList.contains('score-card-float-dragging')) return;
+    const dx = e.clientX - startMouseX;
+    const dy = e.clientY - startMouseY;
+    if (Math.abs(dx) > 4 || Math.abs(dy) > 4) {
+      hasDragged = true;
+    }
+    if (!hasDragged) return;
+    let newLeft = e.clientX - dragOffsetX;
+    let newTop = e.clientY - dragOffsetY;
+    newLeft = Math.max(0, Math.min(newLeft, window.innerWidth - card.offsetWidth));
+    newTop = Math.max(0, Math.min(newTop, window.innerHeight - 50));
+    card.style.left = newLeft + 'px';
+    card.style.top = newTop + 'px';
+    card.style.right = 'auto';
+  });
+
+  document.addEventListener('mouseup', () => {
+    if (card.classList.contains('score-card-float-dragging')) {
+      card.classList.remove('score-card-float-dragging');
+      if (hasDragged) {
+        localStorage.setItem('scoreCardPos', JSON.stringify({
+          left: parseInt(card.style.left) || 0,
+          top: parseInt(card.style.top) || 80
+        }));
+      }
+    }
+  });
+
+  // 收起/展开 - 只有点击（非拖动）才触发
+  header.addEventListener('click', (e) => {
+    if (hasDragged) return;
+    card.classList.toggle('collapsed');
+    localStorage.setItem('scoreCardCollapsed', card.classList.contains('collapsed'));
+  });
+})();
+
+// ==================== 初始化 ====================
+drawRadar();
+renderPlayProgress();
+
+// ==================== 动态星空背景 ====================
+(function initBgCanvas() {
+  const canvas = document.getElementById('bgCanvas');
+  const ctx = canvas.getContext('2d');
+  let stars = [];
+  const STAR_COUNT = 160;
+
+  function resize() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  for (let i = 0; i < STAR_COUNT; i++) {
+    stars.push({
+      x: Math.random() * canvas.width,
+      y: Math.random() * canvas.height,
+      r: Math.random() * 1.5 + 0.3,
+      speed: Math.random() * 0.15 + 0.03,
+      opacity: Math.random() * 0.7 + 0.3,
+      pulse: Math.random() * Math.PI * 2
+    });
+  }
+
+  // 随机流星（带渐变尾迹 + 发光头 + 彩色变种）
+  let meteors = [];
+  const meteorColors = [[200, 225, 255], [150, 220, 255], [255, 190, 230], [255, 230, 170]];
+  function spawnMeteor() {
+    if (Math.random() < 0.004) {
+      const fromTop = Math.random() < 0.7;
+      const c = meteorColors[Math.floor(Math.random() * meteorColors.length)];
+      const ang = (Math.random() * 0.3 + 0.2) * Math.PI;
+      const sp = Math.random() * 5 + 9;
+      meteors.push({
+        x: fromTop ? Math.random() * canvas.width : -40,
+        y: fromTop ? -40 : Math.random() * canvas.height * 0.4,
+        vx: Math.cos(ang) * sp * (Math.random() < 0.5 ? 1 : -1),
+        vy: Math.sin(ang) * sp,
+        life: 1,
+        len: Math.random() * 60 + 80,
+        c: c
+      });
+    }
+  }
+
+  function drawStars() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const time = Date.now() * 0.001;
+    stars.forEach(s => {
+      s.y -= s.speed;
+      if (s.y < -5) { s.y = canvas.height + 5; s.x = Math.random() * canvas.width; }
+      const flicker = 0.5 + 0.5 * Math.sin(time * 1.5 + s.pulse);
+      const alpha = s.opacity * flicker;
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(180, 210, 255, ${alpha})`;
+      ctx.fill();
+      if (s.r > 1.2) {
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, s.r * 3, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(150, 190, 255, ${alpha * 0.12})`;
+        ctx.fill();
+      }
+    });
+    // 流星
+    spawnMeteor();
+    meteors = meteors.filter(m => {
+      m.x += m.vx; m.y += m.vy; m.life -= 0.008;
+      if (m.life <= 0 || m.x < -120 || m.x > canvas.width + 120 || m.y > canvas.height + 120) return false;
+      const norm = Math.hypot(m.vx, m.vy);
+      const tx = m.x - m.vx / norm * m.len, ty = m.y - m.vy / norm * m.len;
+      const g = ctx.createLinearGradient(m.x, m.y, tx, ty);
+      g.addColorStop(0, `rgba(${m.c[0]},${m.c[1]},${m.c[2]},${m.life})`);
+      g.addColorStop(0.4, `rgba(${m.c[0]},${m.c[1]},${m.c[2]},${m.life * 0.4})`);
+      g.addColorStop(1, `rgba(${m.c[0]},${m.c[1]},${m.c[2]},0)`);
+      ctx.strokeStyle = g; ctx.lineWidth = 2.2; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(m.x, m.y); ctx.lineTo(tx, ty); ctx.stroke();
+      // 发光头部
+      const rg = ctx.createRadialGradient(m.x, m.y, 0, m.x, m.y, 8);
+      rg.addColorStop(0, `rgba(255,255,255,${m.life})`);
+      rg.addColorStop(0.4, `rgba(${m.c[0]},${m.c[1]},${m.c[2]},${m.life * 0.6})`);
+      rg.addColorStop(1, `rgba(${m.c[0]},${m.c[1]},${m.c[2]},0)`);
+      ctx.fillStyle = rg; ctx.beginPath(); ctx.arc(m.x, m.y, 8, 0, Math.PI * 2); ctx.fill();
+      return true;
+    });
+    requestAnimationFrame(drawStars);
+  }
+  drawStars();
+})();
+
+// ==================== 播放控制 ====================
+function toggleAutoplay() {
+  isPlaying = !isPlaying;
+  const btn = document.getElementById('playBtn');
+  const label = document.getElementById('playLabel');
+  if (isPlaying) {
+    btn.textContent = '⏸';
+    btn.classList.add('playing');
+    label.textContent = '播放中';
+    if (selectedPlant < 0) selectedPlant = 0;
+    startAutoplay();
+  } else {
+    btn.textContent = '▶';
+    btn.classList.remove('playing');
+    label.textContent = '已暂停';
+    stopAutoplay();
+  }
+  renderPlayProgress();
+}
+
+function startAutoplay() {
+  stopAutoplay();
+  autoplayTimer = setInterval(() => {
+    if (plants.length === 0) return;
+    selectedPlant = (selectedPlant + 1) % plants.length;
+    drawRadar();
+    renderPlayProgress();
+    updateSelectorSummary();
+  }, 5000);
+}
+
+function stopAutoplay() {
+  if (autoplayTimer) { clearInterval(autoplayTimer); autoplayTimer = null; }
+}
+
+function nextPlant() {
+  if (plants.length === 0) return;
+  selectedPlant = (selectedPlant + 1) % plants.length;
+  drawRadar();
+  renderPlayProgress();
+  updateSelectorSummary();
+  if (isPlaying) startAutoplay();
+}
+
+function prevPlant() {
+  if (plants.length === 0) return;
+  selectedPlant = (selectedPlant - 1 + plants.length) % plants.length;
+  drawRadar();
+  renderPlayProgress();
+  updateSelectorSummary();
+  if (isPlaying) startAutoplay();
+}
+
+function goToPlant(idx) {
+  selectedPlant = idx;
+  drawRadar();
+  renderPlayProgress();
+  if (isPlaying) startAutoplay();
+}
+
+function renderPlayProgress() {
+  const container = document.getElementById('playProgress');
+  if (!container) return;
+  container.innerHTML = '';
+  plants.forEach((p, i) => {
+    const dot = document.createElement('div');
+    dot.className = 'play-dot' + (selectedPlant === i ? ' active' : '');
+    if (selectedPlant === i) dot.style.background = p.color;
+    dot.title = p.name;
+    dot.addEventListener('click', () => goToPlant(i));
+    container.appendChild(dot);
+  });
+}
+</script>
+</body>
+</html>
